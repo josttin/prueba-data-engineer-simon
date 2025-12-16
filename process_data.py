@@ -20,16 +20,13 @@ def process_data(input_file_path):
 
     print(f"Iniciando el procesamiento del archivo: {input_file_path}")
 
-    # Columnas Clave a utilizar del Parquet (solo las que existen):
-    # tpep_pickup_datetime -> timestamp
-    # PULocationID -> vehicle_id (usado como ID del vehículo)
-    
+
     COLUMNAS_CLAVE = {
         'tpep_pickup_datetime': 'timestamp',
         'PULocationID': 'vehicle_id',
     }
     
-    # 1a. Carga de Datos de Referencia (taxi_zone_lookup.csv)
+    # 1. Carga de Datos de Referencia (taxi_zone_lookup.csv) 
 
     LOOKUP_FILE = 'taxi_zone_lookup.csv'
     if not os.path.exists(LOOKUP_FILE):
@@ -38,11 +35,8 @@ def process_data(input_file_path):
         
     try:
         df_lookup = pd.read_csv(LOOKUP_FILE)
-        # Renombramos la columna clave para que coincida con el Reporte 1
         df_lookup.rename(columns={'LocationID': 'vehicle_id'}, inplace=True)
-        # Convertir a string para que el join (merge) funcione correctamente
         df_lookup['vehicle_id'] = df_lookup['vehicle_id'].astype(str)
-        # Seleccionamos solo las columnas necesarias para enriquecer el Reporte 1
         df_lookup = df_lookup[['vehicle_id', 'Borough', 'Zone']]
         print(f"Datos de referencia de ubicación cargados con {len(df_lookup)} zonas.")
         
@@ -50,9 +44,8 @@ def process_data(input_file_path):
         print(f"Error al leer el archivo de referencia {LOOKUP_FILE}: {e}")
         return
         
-    # ----------------------------------------------------
-    # 1b. Carga de Datos de Eventos (Parquet)
-    # ----------------------------------------------------
+    # 1b. Carga de Datos de Eventos (Parquet) 
+
     try:
         # Usamos list() para asegurar que Pandas reciba una lista de nombres de columnas
         df = pd.read_parquet(
@@ -73,15 +66,11 @@ def process_data(input_file_path):
         print(f"Error al leer el archivo Parquet: {e}")
         return
 
-    # ----------------------------------------------------
     # 2. Generar Salida 1: "Última Ubicación Conocida"
-    # Salida adaptada: usa Zone/Borough en lugar de Latitud/Longitud.
-    # ----------------------------------------------------
+    
     print("Generando Reporte 1: Última Ubicación Conocida (usando Zona/Borough)...")
 
-    # Lógica Clave: Encontrar el último registro por cada vehicle_id basado en el timestamp.
-    # 1. Ordenar por vehicle_id y timestamp (descendente)
-    # 2. Mantener solo el primer registro (el más reciente) para cada vehículo
+    # Encontrar el último registro por cada vehicle_id basado en el timestamp.
     df_ultima_ubicacion = df.sort_values(
         by=['vehicle_id', 'timestamp'],
         ascending=False
@@ -90,15 +79,15 @@ def process_data(input_file_path):
         keep='first'
     )
 
-    # 3. Hacemos un JOIN (merge) con la tabla de referencia (df_lookup)
+    # 3. Hacemos un JOIN con la tabla de referencia
     df_ultima_ubicacion = pd.merge(
         df_ultima_ubicacion[['vehicle_id', 'timestamp']],
         df_lookup,
         on='vehicle_id',
-        how='left' # Usamos left join para mantener todos los vehículos del archivo de viajes
+        how='left' 
     )
     
-    # 4. Seleccionar y renombrar las columnas (adaptadas).
+    # 4. Seleccionar y renombrar las columnas
     df_ultima_ubicacion = df_ultima_ubicacion[[
         'vehicle_id', 'timestamp', 'Borough', 'Zone'
     ]].rename(columns={
@@ -112,17 +101,14 @@ def process_data(input_file_path):
     df_ultima_ubicacion.to_csv(output_file_1, index=False)
     print(f"Reporte 1 guardado en: {output_file_1} ({len(df_ultima_ubicacion)} filas)")
 
-    # 3. Generar Salida 2: "Reporte de Viajes por Hora"
+    # 3. Generar Salida 2: "Reporte de Viajes por Hora" 
     
     print("Generando Reporte 2: Reporte de Viajes por Hora...")
 
-    # Lógica Clave: Extraer la hora, agrupar y contar.
-    
     # 1. Extraer la hora (0-23)
     df['hora_del_dia'] = df['timestamp'].dt.hour
     
-    # 2. Agrupar por hora y contar los registros (viajes)
-    # .size() cuenta los elementos en cada grupo.
+    # 2. Agrupar por hora y contar los registros
     df_viajes_por_hora = df.groupby('hora_del_dia').size().reset_index(name='total_viajes')
 
     # 3. Ordenar por hora del día
